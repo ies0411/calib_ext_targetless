@@ -52,19 +52,23 @@ class Calibration {
 
     bool checkFov(const cv::Point2d &p);
 
-    void edgeDetector(const int &canny_threshold, const int &edge_threshold, const cv::Mat &src_img, cv::Mat &edge_img, pcl::PointCloud<pcl::PointXYZ>::Ptr &edge_cloud);
+    void edgeDetector();
     void projection(const pcl::PointCloud<pcl::PointXYZI>::Ptr &lidar_cloud, cv::Mat &projection_img);
-    void calcLine(const std::vector<Plane> &plane_list, const double voxel_size, const Eigen::Vector3d origin, std::vector<pcl::PointCloud<pcl::PointXYZI>> &line_cloud_list);
+    void calcLine(const std::vector<Plane> &plane_list, const double voxel_size_, const Eigen::Vector3d origin, std::vector<pcl::PointCloud<pcl::PointXYZI>> &line_cloud_list);
 
     void buildVPnp(const int dis_threshold, const bool show_residual,
-                   const pcl::PointCloud<pcl::PointXYZ>::Ptr &cam_edge_cloud_2d, const pcl::PointCloud<pcl::PointXYZI>::Ptr &lidar_line_cloud_3d,
+                   const pcl::PointCloud<pcl::PointXYZ>::Ptr &cam_edge_cloud_2d, const pcl::PointCloud<pcl::PointXYZI>::Ptr &plane_line_cloud_,
                    std::vector<VPnPData> &pnp_list);
 
     cv::Mat getConnectImg(const int dis_threshold, const pcl::PointCloud<pcl::PointXYZ>::Ptr &rgb_edge_cloud, const pcl::PointCloud<pcl::PointXYZ>::Ptr &depth_edge_cloud);
     cv::Mat getProjectionImg();
-    void initVoxel(const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud, const float voxel_size, std::unordered_map<VOXEL_LOC, Voxel *> &voxel_map);
-    void LiDAREdgeExtraction(const std::unordered_map<VOXEL_LOC, Voxel *> &voxel_map, const float &ransac_dis_thre, const int plane_size_threshold, pcl::PointCloud<pcl::PointXYZI>::Ptr &lidar_line_cloud_3d);
+    void initVoxel();
+    void LiDAREdgeExtraction();
     void calcDirection(const std::vector<Eigen::Vector2d> &points, Eigen::Vector2d &direction);
+    void setParam(const ros::NodeHandle &priv_nh);
+
+    void loadImg();
+    void loadPCD();
 
     float fx_, fy_, cx_, cy_, k1_, k2_, p1_, p2_, k3_, s_;
     int width_, height_;
@@ -99,43 +103,27 @@ class Calibration {
     std::string calib_config_file_, image_file_, pcd_file_, result_file_;
     Eigen::Matrix3d camera_intrinsic_;
     Eigen::Vector4d dist_coeffs_;
-};
 
-Calibration::Calibration(const ros::NodeHandle &priv_nh) {
+    std::unordered_map<VOXEL_LOC, Voxel *> voxel_map_;
+};
+void Calibration::setParam(const ros::NodeHandle &priv_nh) {
     std::vector<double> camera_intrinsic, dist_coeffs;
-    priv_nh.param<std::string>("calib/alib_config_file", calib_config_file_, "/home/catkin_ws/src/livox_camera_calib/config/config_indoor.yaml");
+    priv_nh.param<std::string>("calib/alib_config_file", calib_config_file_, "/home/catkin_ws/src/calib-extrinsic-targetless/config/config_indoor.yaml");
     priv_nh.param<std::string>("common/image_file", image_file_, "/home/data/superb/3.png");
+    priv_nh.param<std::string>("common/pcd_file", pcd_file_, "/home/data/superb/3.png");
     priv_nh.param<std::string>("common/result_file", result_file_, "/home/data/extrinsic.txt");
     priv_nh.param<std::vector<double>>("camera/camera_matrix", camera_intrinsic, std::vector<double>());
     priv_nh.param<std::vector<double>>("camera/dist_coeffs", dist_coeffs, std::vector<double>());
 
-    // fx_ = camera_intrinsic[0];
-    // cx_ = camera_intrinsic[2];
-    // fy_ = camera_intrinsic[4];
-    // cy_ = camera_intrinsic[5];
-    // k1_ = dist_coeffs[0];
-    // k2_ = dist_coeffs[1];
-    // p1_ = dist_coeffs[2];
-    // p2_ = dist_coeffs[3];
-    // k3_ = dist_coeffs[4];
-    calib_config_file_ = "/home/catkin_ws/src/livox_camera_calib/config/config_indoor.yaml";
-    image_file_ = "/home/data/superb/3.png";
-    pcd_file_ = "/home/data/superb/3.pcd";
-    result_file_ = "/home/data/extrinsic.txt";
-    fx_ = 1364.45;
-    cx_ = 958.327;
-    fy_ = 1366.46;
-    cy_ = 535.074;
-    k1_ = 0.0958277;
-    k2_ = -0.198233;
-    p1_ = -0.000147133;
-    p2_ = -0.000430056;
-    k3_ = 0.0;
+    camera_intrinsic_ << camera_intrinsic[0], camera_intrinsic[1], camera_intrinsic[2],
+        camera_intrinsic[3], camera_intrinsic[4], camera_intrinsic[5],
+        camera_intrinsic[6], camera_intrinsic[7], camera_intrinsic[8];
 
-    camera_intrinsic_ << fx_, 0.0, cx_, 0.0, fy_, cy_, 0.0, 0.0, 1.0;
-    dist_coeffs_ << k1_, k2_, p1_, p2_;
+    dist_coeffs_ << dist_coeffs[0], dist_coeffs[1], dist_coeffs[2], dist_coeffs[3];
 
     loadCalibConfig(calib_config_file_);
+}
+void Calibration::loadImg() {
     image_ = cv::imread(image_file_, cv::IMREAD_UNCHANGED);
     if (!image_.data) {
         std::string msg = "Can not load image from " + image_file_;
@@ -157,12 +145,8 @@ Calibration::Calibration(const ros::NodeHandle &priv_nh) {
         ROS_ERROR_STREAM(msg.c_str());
         exit(-1);
     }
-    cv::Mat edge_image;
-
-    edgeDetector(rgb_canny_threshold_, rgb_edge_minLen_, grey_image_, edge_image, rgb_egde_cloud_);
-    std::string msg = "Sucessfully extract edge from image, edge size:" + std::to_string(rgb_egde_cloud_->size());
-    ROS_INFO_STREAM(msg.c_str());
-
+}
+void Calibration::loadPCD() {
     raw_lidar_cloud_ = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
     ROS_INFO_STREAM("Loading point cloud from pcd file.");
     if (!pcl::io::loadPCDFile(pcd_file_, *raw_lidar_cloud_)) {
@@ -173,10 +157,18 @@ Calibration::Calibration(const ros::NodeHandle &priv_nh) {
         ROS_ERROR_STREAM(msg.c_str());
         exit(-1);
     }
+}
 
-    std::unordered_map<VOXEL_LOC, Voxel *> voxel_map;
-    initVoxel(raw_lidar_cloud_, voxel_size_, voxel_map);
-    LiDAREdgeExtraction(voxel_map, ransac_dis_threshold_, plane_size_threshold_, plane_line_cloud_);
+Calibration::Calibration(const ros::NodeHandle &priv_nh) {
+    setParam(priv_nh);
+    loadImg();
+    loadPCD();
+    edgeDetector();
+    std::string msg = "Sucessfully extract edge from image, edge size:" + std::to_string(rgb_egde_cloud_->size());
+    ROS_INFO_STREAM(msg.c_str());
+
+    initVoxel();
+    LiDAREdgeExtraction();
 };
 
 bool Calibration::loadCalibConfig(const std::string &config_file) {
@@ -216,36 +208,34 @@ bool Calibration::loadCalibConfig(const std::string &config_file) {
 };
 
 // Detect edge by canny, and filter by edge length
-void Calibration::edgeDetector(const int &canny_threshold, const int &edge_threshold, const cv::Mat &src_img, cv::Mat &edge_img, pcl::PointCloud<pcl::PointXYZ>::Ptr &edge_cloud) {
+
+void Calibration::edgeDetector() {
     int gaussian_size = 5;
-    cv::GaussianBlur(src_img, src_img, cv::Size(gaussian_size, gaussian_size), 0,
-                     0);
+    cv::GaussianBlur(grey_image_, grey_image_, cv::Size(gaussian_size, gaussian_size), 0, 0);
     cv::Mat canny_result = cv::Mat::zeros(height_, width_, CV_8UC1);
-    cv::Canny(src_img, canny_result, canny_threshold, canny_threshold * 3, 3,
+    cv::Canny(grey_image_, canny_result, rgb_canny_threshold_, rgb_canny_threshold_ * 3, 3,
               true);
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
     cv::findContours(canny_result, contours, hierarchy, cv::RETR_EXTERNAL,
                      cv::CHAIN_APPROX_NONE, cv::Point(0, 0));
-    edge_img = cv::Mat::zeros(height_, width_, CV_8UC1);
 
-    edge_cloud = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
+    rgb_egde_cloud_ = pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
     for (size_t i = 0; i < contours.size(); i++) {
-        if (contours[i].size() > edge_threshold) {
+        if (contours[i].size() > rgb_edge_minLen_) {
             cv::Mat debug_img = cv::Mat::zeros(height_, width_, CV_8UC1);
             for (size_t j = 0; j < contours[i].size(); j++) {
                 pcl::PointXYZ p;
                 p.x = contours[i][j].x;
                 p.y = -contours[i][j].y;
                 p.z = 0;
-                edge_img.at<uchar>(-p.y, p.x) = 255;
-                edge_cloud->points.push_back(p);
+                rgb_egde_cloud_->points.push_back(p);
             }
         }
     }
 
-    edge_cloud->width = edge_cloud->points.size();
-    edge_cloud->height = 1;
+    rgb_egde_cloud_->width = rgb_egde_cloud_->points.size();
+    rgb_egde_cloud_->height = 1;
 }
 
 void Calibration::projection(const pcl::PointCloud<pcl::PointXYZI>::Ptr &lidar_cloud, cv::Mat &projection_img) {
@@ -253,17 +243,16 @@ void Calibration::projection(const pcl::PointCloud<pcl::PointXYZI>::Ptr &lidar_c
     std::vector<float> intensity_list;
 
     for (size_t i = 0; i < lidar_cloud->size(); i++) {
-        pcl::PointXYZI point_3d = lidar_cloud->points[i];
-        float depth = sqrt(pow(point_3d.x, 2) + pow(point_3d.y, 2) + pow(point_3d.z, 2));
+        std::shared_ptr<pcl::PointXYZI> point_3d = std::make_shared<pcl::PointXYZI>(lidar_cloud->points[i]);
+        float depth = sqrt(pow(point_3d->x, 2) + pow(point_3d->y, 2) + pow(point_3d->z, 2));
         if (depth > min_depth_ && depth < max_depth_) {
-            pts_3d.emplace_back(cv::Point3f(point_3d.x, point_3d.y, point_3d.z));
+            pts_3d.emplace_back(cv::Point3f(point_3d->x, point_3d->y, point_3d->z));
             intensity_list.emplace_back(lidar_cloud->points[i].intensity);
         }
     }
 
-    cv::Mat t_vec;
     std::vector<cv::Point2f> pts_2d;
-    cv::Mat R_cv, intrinsic_cv, distor_cv;
+    cv::Mat R_cv, intrinsic_cv, distor_cv, t_vec;
     cv::Mat c_R_l = cv::Mat::zeros(3, 3, CV_64F);
     cv::eigen2cv(rotation_matrix_, c_R_l);
     cv::eigen2cv(camera_intrinsic_, intrinsic_cv);
@@ -272,11 +261,10 @@ void Calibration::projection(const pcl::PointCloud<pcl::PointXYZI>::Ptr &lidar_c
     cv::eigen2cv(translation_vector_, t_vec);
     cv::Rodrigues(c_R_l, R_cv);
     cv::projectPoints(pts_3d, R_cv, t_vec, intrinsic_cv, distor_cv, pts_2d);
-    cv::Mat image_project = cv::Mat::zeros(height_, width_, CV_16UC1);
+    projection_img = cv::Mat::zeros(height_, width_, CV_16UC1);
 
     for (size_t i = 0; i < pts_2d.size(); ++i) {
-        cv::Point2f point_2d = pts_2d[i];
-        if (point_2d.x <= 0 || point_2d.x >= width_ || point_2d.y <= 0 || point_2d.y >= height_) {
+        if (pts_2d[i].x <= 0 || pts_2d[i].x >= width_ || pts_2d[i].y <= 0 || pts_2d[i].y >= height_) {
             continue;
         } else {
             float intensity = intensity_list[i];
@@ -285,13 +273,11 @@ void Calibration::projection(const pcl::PointCloud<pcl::PointXYZI>::Ptr &lidar_c
             } else {
                 intensity = (intensity / 150.0) * 65535;
             }
-            image_project.at<ushort>(point_2d.y, point_2d.x) = intensity;
+            projection_img.at<ushort>(pts_2d[i].y, pts_2d[i].x) = intensity;
         }
     }
 
-    image_project.convertTo(image_project, CV_8UC1, 1 / 256.0);
-
-    projection_img = image_project.clone();
+    projection_img.convertTo(projection_img, CV_8UC1, 1 / 256.0);
 }
 
 cv::Mat Calibration::getConnectImg(const int dis_threshold, const pcl::PointCloud<pcl::PointXYZ>::Ptr &rgb_edge_cloud, const pcl::PointCloud<pcl::PointXYZ>::Ptr &depth_edge_cloud) {
@@ -374,54 +360,54 @@ bool Calibration::checkFov(const cv::Point2d &p) {
     }
 }
 
-void Calibration::initVoxel(const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud, const float voxel_size, std::unordered_map<VOXEL_LOC, Voxel *> &voxel_map) {
+void Calibration::initVoxel() {
     ROS_INFO_STREAM("Building Voxel");
 
     pcl::PointCloud<pcl::PointXYZRGB> test_cloud;
-    for (size_t i = 0; i < input_cloud->size(); i++) {
-        const pcl::PointXYZI &p_c = input_cloud->points[i];
+    for (size_t i = 0; i < raw_lidar_cloud_->size(); i++) {
+        const pcl::PointXYZI &p_c = raw_lidar_cloud_->points[i];
         float loc_xyz[3];
         for (int j = 0; j < 3; j++) {
-            loc_xyz[j] = p_c.data[j] / voxel_size;
+            loc_xyz[j] = p_c.data[j] / voxel_size_;
             if (loc_xyz[j] < 0) {
                 loc_xyz[j] -= 1.0;
             }
         }
         VOXEL_LOC position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1], (int64_t)loc_xyz[2]);
-        auto iter = voxel_map.find(position);
-        if (iter != voxel_map.end()) {
-            voxel_map[position]->cloud->push_back(p_c);
+        auto iter = voxel_map_.find(position);
+        if (iter != voxel_map_.end()) {
+            voxel_map_[position]->cloud->push_back(p_c);
             pcl::PointXYZRGB p_rgb;
             p_rgb.x = p_c.x;
             p_rgb.y = p_c.y;
             p_rgb.z = p_c.z;
-            p_rgb.r = voxel_map[position]->voxel_color(0);
-            p_rgb.g = voxel_map[position]->voxel_color(1);
-            p_rgb.b = voxel_map[position]->voxel_color(2);
+            p_rgb.r = voxel_map_[position]->voxel_color(0);
+            p_rgb.g = voxel_map_[position]->voxel_color(1);
+            p_rgb.b = voxel_map_[position]->voxel_color(2);
             test_cloud.push_back(p_rgb);
         } else {
-            Voxel *voxel = new Voxel(voxel_size);
-            voxel_map[position] = voxel;
-            voxel_map[position]->voxel_origin[0] = position.x * voxel_size;
-            voxel_map[position]->voxel_origin[1] = position.y * voxel_size;
-            voxel_map[position]->voxel_origin[2] = position.z * voxel_size;
-            voxel_map[position]->cloud->push_back(p_c);
+            Voxel *voxel = new Voxel(voxel_size_);
+            voxel_map_[position] = voxel;
+            voxel_map_[position]->voxel_origin[0] = position.x * voxel_size_;
+            voxel_map_[position]->voxel_origin[1] = position.y * voxel_size_;
+            voxel_map_[position]->voxel_origin[2] = position.z * voxel_size_;
+            voxel_map_[position]->cloud->push_back(p_c);
             int r = rand() % 256;
             int g = rand() % 256;
             int b = rand() % 256;
-            voxel_map[position]->voxel_color << r, g, b;
+            voxel_map_[position]->voxel_color << r, g, b;
         }
     }
-    for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++) {
+    for (auto iter = voxel_map_.begin(); iter != voxel_map_.end(); iter++) {
         if (iter->second->cloud->size() > 20) {
             down_sampling_voxel(*(iter->second->cloud), 0.02);
         }
     }
 }
 
-void Calibration::LiDAREdgeExtraction(const std::unordered_map<VOXEL_LOC, Voxel *> &voxel_map, const float &ransac_dis_thre, const int plane_size_threshold, pcl::PointCloud<pcl::PointXYZI>::Ptr &lidar_line_cloud_3d) {
-    lidar_line_cloud_3d = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
-    for (auto iter = voxel_map.begin(); iter != voxel_map.end(); iter++) {
+void Calibration::LiDAREdgeExtraction() {
+    plane_line_cloud_ = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
+    for (auto iter = voxel_map_.begin(); iter != voxel_map_.end(); iter++) {
         if (iter->second->cloud->size() > 50) {
             std::vector<Plane> plane_list;
             pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_filter(new pcl::PointCloud<pcl::PointXYZI>);
@@ -432,7 +418,7 @@ void Calibration::LiDAREdgeExtraction(const std::unordered_map<VOXEL_LOC, Voxel 
             seg.setOptimizeCoefficients(true);
             seg.setModelType(pcl::SACMODEL_PLANE);
             seg.setMethodType(pcl::SAC_RANSAC);
-            seg.setDistanceThreshold(ransac_dis_thre);
+            seg.setDistanceThreshold(ransac_dis_threshold_);
 
             pcl::PointCloud<pcl::PointXYZRGB> color_planner_cloud;
             int plane_index = 0;
@@ -451,7 +437,7 @@ void Calibration::LiDAREdgeExtraction(const std::unordered_map<VOXEL_LOC, Voxel 
                 extract.setInputCloud(cloud_filter);
                 extract.filter(planner_cloud);
 
-                if (planner_cloud.size() > plane_size_threshold) {
+                if (planner_cloud.size() > plane_size_threshold_) {
                     pcl::PointCloud<pcl::PointXYZRGB> color_cloud;
                     std::vector<unsigned int> colors;
                     colors.push_back(static_cast<unsigned int>(rand() % 256));
@@ -496,7 +482,7 @@ void Calibration::LiDAREdgeExtraction(const std::unordered_map<VOXEL_LOC, Voxel 
                 for (size_t cloud_index = 0; cloud_index < line_cloud_list.size(); cloud_index++) {
                     for (size_t i = 0; i < line_cloud_list[cloud_index].size(); i++) {
                         pcl::PointXYZI p = line_cloud_list[cloud_index].points[i];
-                        lidar_line_cloud_3d->points.push_back(p);
+                        plane_line_cloud_->points.push_back(p);
                         plane_line_number_.push_back(line_number_);
                     }
                     line_number_++;
@@ -506,7 +492,7 @@ void Calibration::LiDAREdgeExtraction(const std::unordered_map<VOXEL_LOC, Voxel 
     }
 }
 
-void Calibration::calcLine(const std::vector<Plane> &plane_list, const double voxel_size, const Eigen::Vector3d origin, std::vector<pcl::PointCloud<pcl::PointXYZI>> &line_cloud_list) {
+void Calibration::calcLine(const std::vector<Plane> &plane_list, const double voxel_size_, const Eigen::Vector3d origin, std::vector<pcl::PointCloud<pcl::PointXYZI>> &line_cloud_list) {
     if (plane_list.size() >= 2 && plane_list.size() <= plane_max_size_) {
         pcl::PointCloud<pcl::PointXYZI> temp_line_cloud;
         for (size_t plane_index1 = 0; plane_index1 < plane_list.size() - 1; plane_index1++) {
@@ -546,9 +532,9 @@ void Calibration::calcLine(const std::vector<Plane> &plane_list, const double vo
                         matrix[3][3] = 0;
                         matrix[3][4] = origin[0];
                         calc<float>(matrix, point);
-                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size + point_dis_threshold &&
-                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size + point_dis_threshold &&
-                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size + point_dis_threshold) {
+                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size_ + point_dis_threshold &&
+                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size_ + point_dis_threshold &&
+                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size_ + point_dis_threshold) {
                             points.push_back(point);
                         }
                         matrix[3][1] = 0;
@@ -556,9 +542,9 @@ void Calibration::calcLine(const std::vector<Plane> &plane_list, const double vo
                         matrix[3][3] = 0;
                         matrix[3][4] = origin[1];
                         calc<float>(matrix, point);
-                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size + point_dis_threshold &&
-                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size + point_dis_threshold &&
-                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size + point_dis_threshold) {
+                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size_ + point_dis_threshold &&
+                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size_ + point_dis_threshold &&
+                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size_ + point_dis_threshold) {
                             points.push_back(point);
                         }
                         matrix[3][1] = 0;
@@ -566,39 +552,39 @@ void Calibration::calcLine(const std::vector<Plane> &plane_list, const double vo
                         matrix[3][3] = 1;
                         matrix[3][4] = origin[2];
                         calc<float>(matrix, point);
-                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size + point_dis_threshold &&
-                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size + point_dis_threshold &&
-                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size + point_dis_threshold) {
+                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size_ + point_dis_threshold &&
+                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size_ + point_dis_threshold &&
+                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size_ + point_dis_threshold) {
                             points.push_back(point);
                         }
                         matrix[3][1] = 1;
                         matrix[3][2] = 0;
                         matrix[3][3] = 0;
-                        matrix[3][4] = origin[0] + voxel_size;
+                        matrix[3][4] = origin[0] + voxel_size_;
                         calc<float>(matrix, point);
-                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size + point_dis_threshold &&
-                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size + point_dis_threshold &&
-                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size + point_dis_threshold) {
+                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size_ + point_dis_threshold &&
+                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size_ + point_dis_threshold &&
+                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size_ + point_dis_threshold) {
                             points.push_back(point);
                         }
                         matrix[3][1] = 0;
                         matrix[3][2] = 1;
                         matrix[3][3] = 0;
-                        matrix[3][4] = origin[1] + voxel_size;
+                        matrix[3][4] = origin[1] + voxel_size_;
                         calc<float>(matrix, point);
-                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size + point_dis_threshold &&
-                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size + point_dis_threshold &&
-                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size + point_dis_threshold) {
+                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size_ + point_dis_threshold &&
+                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size_ + point_dis_threshold &&
+                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size_ + point_dis_threshold) {
                             points.push_back(point);
                         }
                         matrix[3][1] = 0;
                         matrix[3][2] = 0;
                         matrix[3][3] = 1;
-                        matrix[3][4] = origin[2] + voxel_size;
+                        matrix[3][4] = origin[2] + voxel_size_;
                         calc<float>(matrix, point);
-                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size + point_dis_threshold &&
-                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size + point_dis_threshold &&
-                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size + point_dis_threshold) {
+                        if (point[0] >= origin[0] - point_dis_threshold && point[0] <= origin[0] + voxel_size_ + point_dis_threshold &&
+                            point[1] >= origin[1] - point_dis_threshold && point[1] <= origin[1] + voxel_size_ + point_dis_threshold &&
+                            point[2] >= origin[2] - point_dis_threshold && point[2] <= origin[2] + voxel_size_ + point_dis_threshold) {
                             points.push_back(point);
                         }
 
@@ -646,7 +632,7 @@ void Calibration::calcLine(const std::vector<Plane> &plane_list, const double vo
 }
 
 void Calibration::buildVPnp(const int dis_threshold, const bool show_residual, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cam_edge_cloud_2d,
-                            const pcl::PointCloud<pcl::PointXYZI>::Ptr &lidar_line_cloud_3d, std::vector<VPnPData> &pnp_list) {
+                            const pcl::PointCloud<pcl::PointXYZI>::Ptr &plane_line_cloud_, std::vector<VPnPData> &pnp_list) {
     pnp_list.clear();
     std::vector<std::vector<std::vector<pcl::PointXYZI>>> img_pts_container;
     for (int y = 0; y < height_; y++) {
@@ -659,8 +645,8 @@ void Calibration::buildVPnp(const int dis_threshold, const bool show_residual, c
     }
     std::vector<cv::Point3d> pts_3d;
 
-    for (size_t i = 0; i < lidar_line_cloud_3d->size(); i++) {
-        pcl::PointXYZI point_3d = lidar_line_cloud_3d->points[i];
+    for (size_t i = 0; i < plane_line_cloud_->size(); i++) {
+        pcl::PointXYZI point_3d = plane_line_cloud_->points[i];
         pts_3d.emplace_back(cv::Point3d(point_3d.x, point_3d.y, point_3d.z));
     }
 

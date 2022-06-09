@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>calib_targetless</name>
+  <name>calib-extrinsic-targetless</name>
   <version>1.0.0</version>
   <description>The calib_targetless package</description>
 

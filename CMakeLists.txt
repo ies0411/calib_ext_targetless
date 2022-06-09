@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(livox_camera_calib)
+project(calib-extrinsic-targetless)
 
 ## Compile as C++14, supported in ROS Kinetic and newer
 add_compile_options(-std=c++17)
