@@ -1,8 +1,7 @@
 %YAML:1.0
 
 # Topic name in rosbag
-PointCloudTopic: "/livox/lidar"
-ImageTopic: "/camera/color/image_raw"
+
 
 ExtrinsicMat: !!opencv-matrix
   rows: 4
@@ -18,7 +17,7 @@ Canny.gray_threshold: 10
 Canny.len_threshold: 200
 
 # Params for Voxel Cutting & Plane Fitting & Edge Extraction
-Voxel.size: 0.5
+Voxel.size: 0.3
 Voxel.down_sample_size: 0.02
 Plane.min_points_size: 30
 Plane.normal_theta_min: 45

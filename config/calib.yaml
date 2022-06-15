@@ -1,7 +1,7 @@
 # Data path. adjust them!
 common:
-  image_file: '/home/data/superb/3.png'
-  pcd_file: '/home/data/superb/3.pcd'
+  image_file: '/home/data/superb/0.png'
+  pcd_file: '/home/data/superb/0.pcd'
   result_file: '/home/data/extrinsic.txt'
 
 # Camera Parameters. Adjust them!

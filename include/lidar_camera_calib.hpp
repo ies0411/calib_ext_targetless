@@ -2,6 +2,8 @@
 #define LIDAR_CAMERA_CALIB_HPP
 
 #include <cv_bridge/cv_bridge.h>
+#include <open3d/Open3D.h>
+#include <open3d/io/PointCloudIO.h>
 #include <pcl/ModelCoefficients.h>
 #include <pcl/common/io.h>
 #include <pcl/features/normal_3d.h>
@@ -23,6 +25,7 @@
 #include <time.h>
 
 #include <Eigen/Core>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <opencv2/core/eigen.hpp>
@@ -147,6 +150,8 @@ void Calibration::loadImg() {
     }
 }
 void Calibration::loadPCD() {
+    std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
+
     raw_lidar_cloud_ = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
     ROS_INFO_STREAM("Loading point cloud from pcd file.");
     if (!pcl::io::loadPCDFile(pcd_file_, *raw_lidar_cloud_)) {
@@ -157,6 +162,15 @@ void Calibration::loadPCD() {
         ROS_ERROR_STREAM(msg.c_str());
         exit(-1);
     }
+    std::chrono::duration<double> sec = std::chrono::system_clock::now() - start;
+    std::cout << "duration : " << sec.count() << "sec" << std::endl;
+
+    std::chrono::system_clock::time_point start2 = std::chrono::system_clock::now();
+
+    auto pcd = std::make_shared<open3d::geometry::PointCloud>();
+    open3d::io::ReadPointCloud(pcd_file_, *pcd);
+    std::chrono::duration<double> sec2 = std::chrono::system_clock::now() - start2;
+    std::cout << "duration : " << sec2.count() << "sec" << std::endl;
 }
 
 Calibration::Calibration(const ros::NodeHandle &priv_nh) {
