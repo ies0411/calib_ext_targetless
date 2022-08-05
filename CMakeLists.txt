@@ -24,12 +24,12 @@ find_package(catkin REQUIRED COMPONENTS
 # find_package(Boost REQUIRED COMPONENTS system)
 find_package(PCL REQUIRED)
 find_package(OpenCV)
-find_package(Open3D)
+# find_package(Open3D)
 find_package(Threads)
-find_package(FMT REQUIRED)
+# find_package(FMT REQUIRED)
 find_package(Ceres REQUIRED)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${Open3D_CXX_FLAGS} -Wall -Wextra")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${Open3D_CXX_FLAGS} -Wall -Wextra")
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
@@ -40,7 +40,7 @@ catkin_package(
   CATKIN_DEPENDS roscpp rospy std_msgs
 )
 
-link_directories(${Open3D_LIBRARY_DIRS})
+# link_directories(${Open3D_LIBRARY_DIRS})
 
 include_directories(
 
@@ -49,7 +49,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
-  ${Open3D_INCLUDE_DIRS}
+  # ${Open3D_INCLUDE_DIRS}
 )
 
 add_executable(lidar_camera_calib src/lidar_camera_calib.cpp include/lidar_camera_calib.hpp include/optimize.hpp)
@@ -57,7 +57,7 @@ add_executable(lidar_camera_calib src/lidar_camera_calib.cpp include/lidar_camer
 # add_executable(lidar_camera_multi_calib src/lidar_camera_multi_calib.cpp include/lidar_camera_calib.hpp)
 # add_executable(bag_to_pcd src/bag_to_pcd.cpp)
 target_link_libraries(lidar_camera_calib
-  ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_LIBRARIES} ${CERES_LIBRARIES} fmt::fmt ${Open3D_LIBRARIES}
+  ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_LIBRARIES} ${CERES_LIBRARIES}
 )
 
 # target_link_libraries(lidar_camera_multi_calib

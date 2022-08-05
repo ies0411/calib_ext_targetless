@@ -1,5 +1,7 @@
 #include "lidar_camera_calib.hpp"
 
+#include <ceres/problem.h>
+
 #include <fstream>
 #include <iomanip>
 #include <iostream>

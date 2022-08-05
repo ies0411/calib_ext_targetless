@@ -2,8 +2,8 @@
 #define LIDAR_CAMERA_CALIB_HPP
 
 #include <cv_bridge/cv_bridge.h>
-#include <open3d/Open3D.h>
-#include <open3d/io/PointCloudIO.h>
+// #include <open3d/Open3D.h>
+// #include <open3d/io/PointCloudIO.h>
 #include <pcl/ModelCoefficients.h>
 #include <pcl/common/io.h>
 #include <pcl/features/normal_3d.h>
@@ -165,12 +165,12 @@ void Calibration::loadPCD() {
     std::chrono::duration<double> sec = std::chrono::system_clock::now() - start;
     std::cout << "duration : " << sec.count() << "sec" << std::endl;
 
-    std::chrono::system_clock::time_point start2 = std::chrono::system_clock::now();
+    // std::chrono::system_clock::time_point start2 = std::chrono::system_clock::now();
 
-    auto pcd = std::make_shared<open3d::geometry::PointCloud>();
-    open3d::io::ReadPointCloud(pcd_file_, *pcd);
-    std::chrono::duration<double> sec2 = std::chrono::system_clock::now() - start2;
-    std::cout << "duration : " << sec2.count() << "sec" << std::endl;
+    // auto pcd = std::make_shared<open3d::geometry::PointCloud>();
+    // open3d::io::ReadPointCloud(pcd_file_, *pcd);
+    // std::chrono::duration<double> sec2 = std::chrono::system_clock::now() - start2;
+    // std::cout << "duration : " << sec2.count() << "sec" << std::endl;
 }
 
 Calibration::Calibration(const ros::NodeHandle &priv_nh) {
